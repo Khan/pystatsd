@@ -16,7 +16,7 @@ _utc_epoch = datetime.datetime.utcfromtimestamp(0)
 
 
 def _utc_now():
-    return int(datetime.datetime.utcnow() - epoch).total_seconds())
+    return int((datetime.datetime.utcnow() - epoch).total_seconds())
 
 
 class Timer(object):
