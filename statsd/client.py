@@ -134,7 +134,7 @@ class StatsClient(object):
         return '%s:%s' % (stat, value)
 
     def _after(self, data):
-        if data:
+        if data and len(data) < self._maxudpsize:
             self._send(data.encode('ascii'))
 
     def _send(self, data):
@@ -184,7 +184,7 @@ class CarbonPipeline(Pipeline):
     Note that you should only use raw_value() to set values in this protocol.
     """
     def _prepare(self, stat, value, rate):
-        assert rate == 1, 'Cannot use sample-rates with PicklePipeline'
+        assert rate == 1, 'Cannot use sample-rates with CarbonPipeline'
 
         if self._prefix:
             stat = '%s.%s' % (self._prefix, stat)
@@ -217,14 +217,12 @@ class PicklePipeline(Pipeline):
         i = len(self._stats)
         while self._stats:
             pickled_data = self._pickle(self._stats[:i])
-            if len(pickled_data) < self._maxudpsize:
+            # If i == 1, then data[0] is too big to fit in a packet on
+            # its own.  We try to send it anyway, hoping our guess of
+            # maxudpsize was too conservative.
+            if len(pickled_data) < self._maxudpsize or i == 1:
                 self._client._send(pickled_data)
                 del self._stats[:i]
-                i = len(self._stats)
-            elif i == 1:
-                logging.warning('Ignoring statsd data: too big to fit in '
-                                'a packet: %s', self._stats[0])
-                del self._stats[0]
                 i = len(self._stats)
             else:
                 i -= 1
