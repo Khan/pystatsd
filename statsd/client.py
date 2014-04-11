@@ -73,6 +73,9 @@ class StatsClient(object):
     def pipeline(self):
         return Pipeline(self)
 
+    def carbon_pipeline(self):
+        return CarbonPipeline(self)
+
     def pickle_pipeline(self):
         return PicklePipeline(self)
 
@@ -175,17 +178,25 @@ class Pipeline(StatsClient):
         self._client._after(data)
 
 
-class PicklePipeline(StatsClient):
+class CarbonPipeline(Pipeline):
+    """Like pipeline, but talks to carbon instead of statsd.
+
+    Note that you should only use raw_value() to set values in this protocol.
+    """
+    def _prepare(self, stat, value, rate):
+        assert rate == 1, 'Cannot use sample-rates with PicklePipeline'
+
+        if self._prefix:
+            stat = '%s.%s' % (self._prefix, stat)
+
+        return '%s %s %s' % (stat, value, int(time.time()))
+
+
+class PicklePipeline(Pipeline):
     """Like pipeline, but uses the pickle protocol to talk to carbon.
 
     Note that you should only use raw_value() to set values in this protocol.
     """
-    def __init__(self, client):
-        self._client = client
-        self._prefix = client._prefix
-        self._maxudpsize = client._maxudpsize
-        self._stats = []
-
     def _prepare(self, stat, value, rate):
         assert rate == 1, 'Cannot use sample-rates with PicklePipeline'
 
@@ -193,16 +204,6 @@ class PicklePipeline(StatsClient):
             stat = '%s.%s' % (self._prefix, stat)
 
         return (stat, (value, int(time.time())))
-
-    def _after(self, data):
-        if data is not None:
-            self._stats.append(data)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, typ, value, tb):
-        self.send()
 
     def _pickle(self, data):
         payload = cPickle.dumps(data, protocol=cPickle.HIGHEST_PROTOCOL)
