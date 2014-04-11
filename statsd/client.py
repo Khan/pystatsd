@@ -1,7 +1,10 @@
 from __future__ import with_statement
+import cPickle
 from functools import wraps
+import logging
 import random
 import socket
+import struct
 import time
 
 
@@ -70,6 +73,9 @@ class StatsClient(object):
     def pipeline(self):
         return Pipeline(self)
 
+    def pickle_pipeline(self):
+        return PicklePipeline(self)
+
     def timer(self, stat, rate=1):
         return Timer(self, stat, rate)
 
@@ -102,6 +108,14 @@ class StatsClient(object):
         """Set a set value."""
         self._send_stat(stat, '%s|s' % value, rate)
 
+    def raw_value(self, stat, value):
+        """Send a raw value.
+
+        For when you skip statsd and talk straight to carbon.  Because
+        carbon doesn't support rate, neither does raw_value.
+        """
+        self._send_stat(stat, value, 1)
+
     def _send_stat(self, stat, value, rate):
         self._after(self._prepare(stat, value, rate))
 
@@ -118,12 +132,12 @@ class StatsClient(object):
 
     def _after(self, data):
         if data:
-            self._send(data)
+            self._send(data.encode('ascii'))
 
     def _send(self, data):
         """Send data to statsd."""
         try:
-            self._sock.sendto(data.encode('ascii'), self._addr)
+            self._sock.sendto(data, self._addr)
         except socket.error:
             # No time for love, Dr. Jones!
             pass
@@ -159,3 +173,56 @@ class Pipeline(StatsClient):
             else:
                 data += '\n' + stat
         self._client._after(data)
+
+
+class PicklePipeline(StatsClient):
+    """Like pipeline, but uses the pickle protocol to talk to carbon.
+
+    Note that you should only use raw_value() to set values in this protocol.
+    """
+    def __init__(self, client):
+        self._client = client
+        self._prefix = client._prefix
+        self._maxudpsize = client._maxudpsize
+        self._stats = []
+
+    def _prepare(self, stat, value, rate):
+        assert rate == 1, 'Cannot use sample-rates with PicklePipeline'
+
+        if self._prefix:
+            stat = '%s.%s' % (self._prefix, stat)
+
+        return (stat, (value, int(time.time())))
+
+    def _after(self, data):
+        if data is not None:
+            self._stats.append(data)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, typ, value, tb):
+        self.send()
+
+    def _pickle(self, data):
+        payload = cPickle.dumps(data, protocol=cPickle.HIGHEST_PROTOCOL)
+        header = struct.pack("!L", len(payload))
+        return header + payload
+
+    def send(self):
+        # Use binary search to figure out how much of the stats we can
+        # send in one go.
+        i = len(self._stats)
+        while self._stats:
+            pickled_data = self._pickle(self._stats[:i])
+            if len(pickled_data) < self._maxudpsize:
+                self._client._send(pickled_data)
+                del self._stats[:i]
+                i = len(self._stats)
+            elif i == 1:
+                logging.warning('Ignoring statsd data: too big to fit in '
+                                'a packet: %s', self._stats[0])
+                del self._stats[0]
+                i = len(self._stats)
+            else:
+                i /= 2
