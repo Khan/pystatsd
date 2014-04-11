@@ -1,5 +1,6 @@
 from __future__ import with_statement
 import cPickle
+import datetime
 from functools import wraps
 import logging
 import random
@@ -9,6 +10,13 @@ import time
 
 
 __all__ = ['StatsClient']
+
+
+_utc_epoch = datetime.datetime.utcfromtimestamp(0)
+
+
+def _utc_now():
+    return int(datetime.datetime.utcnow() - epoch).total_seconds())
 
 
 class Timer(object):
@@ -189,7 +197,10 @@ class CarbonPipeline(Pipeline):
         if self._prefix:
             stat = '%s.%s' % (self._prefix, stat)
 
-        return '%s %s %s' % (stat, value, int(time.time()))
+        # hostedgraphite doesn't require the timestamp (it uses the
+        # current time if it's absent).  That should be good enough
+        # for us; let's save some space!
+        return '%s %s' % (stat, value)
 
 
 class PicklePipeline(Pipeline):
@@ -203,7 +214,7 @@ class PicklePipeline(Pipeline):
         if self._prefix:
             stat = '%s.%s' % (self._prefix, stat)
 
-        return (stat, (value, int(time.time())))
+        return (stat, (value, _utc_now()))
 
     def _pickle(self, data):
         payload = cPickle.dumps(data, protocol=cPickle.HIGHEST_PROTOCOL)
