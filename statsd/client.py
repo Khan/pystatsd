@@ -210,8 +210,9 @@ class PicklePipeline(StatsClient):
         return header + payload
 
     def send(self):
-        # Use binary search to figure out how much of the stats we can
-        # send in one go.
+        # Use linear search to figure out how much of the stats we can
+        # send in one go.  (We could be more efficient if we ever
+        # needed to.)
         i = len(self._stats)
         while self._stats:
             pickled_data = self._pickle(self._stats[:i])
@@ -225,4 +226,4 @@ class PicklePipeline(StatsClient):
                 del self._stats[0]
                 i = len(self._stats)
             else:
-                i /= 2
+                i -= 1
