@@ -134,7 +134,7 @@ class StatsClient(object):
         return '%s:%s' % (stat, value)
 
     def _after(self, data):
-        if data and len(data) < self._maxudpsize:
+        if data:
             self._send(data.encode('ascii'))
 
     def _send(self, data):
