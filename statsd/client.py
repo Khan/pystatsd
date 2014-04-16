@@ -73,10 +73,14 @@ class StatsClient(object):
     def __init__(self, host='localhost', port=8125, prefix=None,
                  maxudpsize=512):
         """Create a new client."""
-        self._addr = (socket.gethostbyname(host), port)
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._host = host
+        self._port = port
         self._prefix = prefix
         self._maxudpsize = maxudpsize
+
+        # Create these lazily, at first use.
+        self._addr = None
+        self._sock = None
 
     def pipeline(self):
         return Pipeline(self)
@@ -148,6 +152,9 @@ class StatsClient(object):
     def _send(self, data):
         """Send data to statsd."""
         try:
+            if not self._sock:   # lazily instantiate
+                self._addr = (socket.gethostbyname(self._host), self._port)
+                self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._sock.sendto(data, self._addr)
         except socket.error:
             # No time for love, Dr. Jones!
