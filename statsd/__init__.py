@@ -4,13 +4,13 @@ import socket
 
 try:
     from django.conf import settings
-    from django.core.exceptions import ImproperlyConfigured
+    from django.core.exceptions import ImproperlyConfigured, EnvironmentError
     try:
         # This handles the case where Django >=1.5 is in the python path
         # but this particular project is not a django project. In
         # that case, settings aren't configured.
         getattr(settings, 'STATSD_HOST', 'localhost')
-    except ImproperlyConfigured:
+    except (ImproperlyConfigured, EnvironmentError):
         settings = None
 except ImportError:
     settings = None
